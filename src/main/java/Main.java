@@ -17,7 +17,7 @@ public class Main {
       clientSocket = serverSocket.accept();
       while (true) {
         // byte[] buffer = new byte[1024];
-        clientSocket.getInputStream().read();
+        clientSocket.getInputStream().read(new byte[1024]);
         // String input = new String(buffer).trim();
         // OutputStream os = clientSocket.getOutputStream();
         // os.write
