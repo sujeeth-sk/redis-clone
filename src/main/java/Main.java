@@ -6,32 +6,37 @@ public class Main {
   public static void main(String[] args) {
     System.out.println("Logs from your program will appear here!");
 
-    // ServerSocket serverSocket = null;
+    ServerSocket serverSocket = null;
     Socket clientSocket = null;
     int port = 6379;
-    try (ServerSocket serverSocket = new ServerSocket(port);) {
+    // int port = 8000;
+    // while (true) {
+    try {
+      serverSocket = new ServerSocket(port);
       serverSocket.setReuseAddress(true);
-      // int port = 8000;
+      clientSocket = serverSocket.accept();
       while (true) {
-        try {
+        // byte[] buffer = new byte[1024];
+        // clientSocket.getInputStream().read(buffer);
+        // String input = new String(buffer).trim();
+        // OutputStream os = clientSocket.getOutputStream();
+        // os.write
 
-          clientSocket = serverSocket.accept();
-          clientSocket.getOutputStream().write("+PONG\r\n".getBytes());
-          // serverSocket.close();
-        } catch (IOException e) {
-          System.out.println("IOException: " + e.getMessage());
-        } finally {
-          try {
-            if (clientSocket != null) {
-              clientSocket.close();
-            }
-          } catch (IOException e) {
-            System.out.println("IOException: " + e.getMessage());
-          }
-        }
+        clientSocket.getOutputStream().write("+PONG\r\n".getBytes());
       }
-    } catch(IOException e){
+      // serverSocket.close();
+    } catch (IOException e) {
       System.out.println("IOException: " + e.getMessage());
+    } finally {
+      try {
+        if (clientSocket != null) {
+          clientSocket.close();
+        }
+      } catch (IOException e) {
+        System.out.println("IOException: " + e.getMessage());
+      }
     }
+    // }
+
   }
 }
