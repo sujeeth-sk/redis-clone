@@ -25,7 +25,7 @@ public class Main {
 
         ByteBuffer buffer = ByteBuffer.allocate(1024);
 
-        Map<SocketChannel, StringBuilder> clientBuffers = new HashMap<>();
+        // Map<SocketChannel, StringBuilder> clientBuffers = new HashMap<>();
 
         //event loop
         while(true){
@@ -47,7 +47,7 @@ public class Main {
                         client.configureBlocking(false); //non blocking
                         client.register(selector, SelectionKey.OP_READ);
                         System.out.println("New client connected " + client.getRemoteAddress());
-                        clientBuffers.put(client, new StringBuilder()); 
+                        // clientBuffers.put(client, new StringBuilder()); 
                     }
                 } 
                 
