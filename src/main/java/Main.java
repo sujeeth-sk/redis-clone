@@ -70,7 +70,7 @@ public class Main {
 
 
                     //static response RESP protocol
-                    String response = "+PING\r\n";
+                    String response = "+PONG\r\n";
                     ByteBuffer responseBuffer = ByteBuffer.wrap(response.getBytes());
                     client.write(responseBuffer);
 
