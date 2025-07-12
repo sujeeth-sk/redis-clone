@@ -5,7 +5,7 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.util.Iterator;
+import java.util.HashMap;
 import java.util.Set;
 
 public class Main {
@@ -23,21 +23,20 @@ public class Main {
 
         ByteBuffer buffer = ByteBuffer.allocate(1024);
 
-        // Map<SocketChannel, StringBuilder> clientBuffers = new HashMap<>();
+        HashMap<SocketChannel, StringBuilder> clientBuffers = new HashMap<>();
 
         //event loop
         while(true){
             selector.select();
             Set<SelectionKey> selectedKeys = selector.selectedKeys();
-            // for (SelectionKey key : selectedKeys) {
-            Iterator<SelectionKey> iter = selectedKeys.iterator();
-
-            while(iter.hasNext()){
-                SelectionKey key = iter.next();
-
+            // Iterator<SelectionKey> iter = selectedKeys.iterator();
+            // while(iter.hasNext()){
+                
+            for (SelectionKey key : selectedKeys) {
+                //     SelectionKey key = iter.next();
+                
                 //Accepting new cleint connection
                 if(key.isAcceptable()){
-
 
                     ServerSocketChannel server = (ServerSocketChannel) key.channel();
                     SocketChannel client = server.accept();
@@ -45,7 +44,7 @@ public class Main {
                         client.configureBlocking(false); //non blocking
                         client.register(selector, SelectionKey.OP_READ);
                         System.out.println("New client connected " + client.getRemoteAddress());
-                        // clientBuffers.put(client, new StringBuilder()); 
+                        clientBuffers.put(client, new StringBuilder()); 
                     }
                 } 
                 
@@ -59,7 +58,7 @@ public class Main {
                     if(bytesRead == -1){
                         System.out.println("Client diconnected " + client.getRemoteAddress()); 
                         client.close();
-                        // clientBuffers.remove(client);
+                        clientBuffers.remove(client);
                         continue;
                     }
 
@@ -69,20 +68,39 @@ public class Main {
                         byte[] data =  new byte[buffer.remaining()];
                         buffer.get(data);
                         String input = new String(data).trim(); //convert byte to string
-                        System.out.println("Recieved from client " + client.getRemoteAddress() + " " + input);
+                        clientBuffers.get(client).append(input);
+
+                        String fullInputString = clientBuffers.get(client).toString();
+
+                        String [] lines = fullInputString.split("\r\n");
+                        if(lines.length >= 3 && lines[0].startsWith("*")){
+                            String command = lines[2].trim().toUpperCase();
+                            
+                            if(command.equals("PING")){
+                                System.out.println("Response to client " + client.getRemoteAddress() + ": " + "PONG");
+                                client.write(ByteBuffer.wrap("+PONG\r\n".getBytes()));
+                            } else if(command.equals("ECHO") && lines.length >= 5){
+                                String messageResponse = "$" + lines[4].length() + "\r\n" + lines[4] + "\r\n";
+                                System.out.println("Response to client " + client.getRemoteAddress() + ": " + messageResponse);
+                                client.write(ByteBuffer.wrap(messageResponse.getBytes()));
+                            } else {
+                                String messageErrorResponse = "-ERR unknown command '" + command + "'\r\n";
+                                System.out.println("Response to client " + client.getRemoteAddress() + ": " + "Error Command: " + command);
+                                client.write(ByteBuffer.wrap(messageErrorResponse.getBytes()));
+                            }
+                            clientBuffers.get(client).setLength(0);
+                        }
+                        
+                        
+                        
                         //static response RESP protocol
-                        String response = "+PONG\r\n";
-                        ByteBuffer responseBuffer = ByteBuffer.wrap(response.getBytes());
-                        client.write(responseBuffer);
+
+                        // String response = "+PONG\r\n";
+                        // ByteBuffer responseBuffer = ByteBuffer.wrap(response.getBytes());
+                        // client.write(responseBuffer);
                     }    
-
-
-
                 }
             }
         }
-        
-
-    }
-    
+    }  
 }
