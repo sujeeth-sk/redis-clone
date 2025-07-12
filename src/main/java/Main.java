@@ -5,7 +5,9 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Set;
 
 public class Main {
@@ -22,6 +24,8 @@ public class Main {
         System.out.println("Stared redis server on port " + port);  
 
         ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+        Map<SocketChannel, StringBuilder> clientBuffers = new HashMap<>();
 
         //event loop
         while(true){
@@ -43,6 +47,7 @@ public class Main {
                         client.configureBlocking(false); //non blocking
                         client.register(selector, SelectionKey.OP_READ);
                         System.out.println("New client connected " + client.getRemoteAddress());
+                        clientBuffers.put(client, new StringBuilder()); 
                     }
                 } 
                 
@@ -56,6 +61,7 @@ public class Main {
                     if(bytesRead == -1){
                         System.out.println("Client diconnected " + client.getRemoteAddress()); 
                         client.close();
+                        clientBuffers.remove(client);
                         continue;
                     }
 
@@ -66,13 +72,12 @@ public class Main {
                         buffer.get(data);
                         String input = new String(data).trim(); //convert byte to string
                         System.out.println("Recieved from client " + client.getRemoteAddress() + " " + input);
+                        //static response RESP protocol
+                        String response = "+PONG\r\n";
+                        ByteBuffer responseBuffer = ByteBuffer.wrap(response.getBytes());
+                        client.write(responseBuffer);
                     }    
 
-
-                    //static response RESP protocol
-                    String response = "+PONG\r\n";
-                    ByteBuffer responseBuffer = ByteBuffer.wrap(response.getBytes());
-                    client.write(responseBuffer);
 
 
                 }
