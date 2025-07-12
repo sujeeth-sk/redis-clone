@@ -5,9 +5,7 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.util.HashMap;
 import java.util.Iterator;
-import java.util.Map;
 import java.util.Set;
 
 public class Main {
@@ -61,7 +59,7 @@ public class Main {
                     if(bytesRead == -1){
                         System.out.println("Client diconnected " + client.getRemoteAddress()); 
                         client.close();
-                        clientBuffers.remove(client);
+                        // clientBuffers.remove(client);
                         continue;
                     }
 
