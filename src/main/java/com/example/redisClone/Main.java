@@ -10,14 +10,21 @@ import java.nio.channels.SocketChannel;
 import java.util.HashMap;
 import java.util.Set;
 
+import com.example.redisClone.rdb.RDBconfig;
 
 public class Main {
     public static void main(String[] args) throws IOException {
 
-        for (String arg : args) {
-            System.out.println(arg);
+        String directory = "/tmp";
+        String dataBaseFileName = "Tdump.rdb";
+        for (int i = 0; i < args.length - 1; i++) {
+            if (args[i].equals("--dir")) {
+                directory = args[i + 1];
+            } else if (args[i].equals("--dbfilename")) {
+                dataBaseFileName = args[i + 1];
+            }
         }
-        
+        RDBconfig rdbConfig = new RDBconfig(directory, dataBaseFileName);
 
         System.out.println("Logs from your program will appear here!");
         int port = 6379;
@@ -49,13 +56,14 @@ public class Main {
 
                 // Client already exists
                 else if (key.isReadable()) {
-                    handleReadableKeys(buffer, clientBuffers, key, redisStore);
+                    handleReadableKeys(buffer, clientBuffers, key, redisStore, rdbConfig);
                 }
             }
         }
     }
 
-    public static void handleAcceptableKeys(HashMap<SocketChannel, StringBuilder> clientBuffers, SelectionKey key, Selector selector) throws IOException {
+    public static void handleAcceptableKeys(HashMap<SocketChannel, StringBuilder> clientBuffers, SelectionKey key,
+            Selector selector) throws IOException {
         ServerSocketChannel server = (ServerSocketChannel) key.channel();
         SocketChannel client = server.accept();
         if (client != null) {
@@ -66,7 +74,8 @@ public class Main {
         }
     }
 
-    public static void handleReadableKeys(ByteBuffer buffer, HashMap<SocketChannel, StringBuilder> clientBuffers, SelectionKey key, HashMap<String, RedisStoreObject> redisStore) throws IOException {
+    public static void handleReadableKeys(ByteBuffer buffer, HashMap<SocketChannel, StringBuilder> clientBuffers,
+            SelectionKey key, HashMap<String, RedisStoreObject> redisStore, RDBconfig rdbConfig) throws IOException {
         SocketChannel client = (SocketChannel) key.channel();
         buffer.clear(); // reset buffer for new read
 
@@ -93,41 +102,128 @@ public class Main {
             if (lines.length >= 3 && lines[0].startsWith("*")) {
                 String command = lines[2].trim().toUpperCase();
 
-                if (command.equals("PING")) {
-                    System.out.println("Response to client " + client.getRemoteAddress() + ": " + "PONG");
-                    client.write(ByteBuffer.wrap("+PONG\r\n".getBytes()));
-                } else if (command.equals("ECHO") && lines.length >= 5) {
-                    String messageResponse = "$" + lines[4].length() + "\r\n" + lines[4] + "\r\n";
-                    System.out.println("Response to client " + client.getRemoteAddress() + ": " + messageResponse);
-                    client.write(ByteBuffer.wrap(messageResponse.getBytes()));
-                } else if (command.equals("SET") && lines.length >= 7) {
-                    long expiry = Long.MAX_VALUE;
-                    if(lines.length >= 11 && lines[8].equalsIgnoreCase("PX")){
-                        expiry = Long.parseLong(lines[10]) + System.currentTimeMillis();
+                boolean handled = false;
+
+                switch (command) {
+                    case "PING" -> {
+                        System.out.println("Response to client " + client.getRemoteAddress() + ": " + "PONG");
+                        client.write(ByteBuffer.wrap("+PONG\r\n".getBytes()));
+                        handled = true;
                     }
-                    System.out.println("Response to client " + client.getRemoteAddress() + ": " + "SET: OK ; with expiry: " + expiry );
-                    redisStore.put(lines[4], new RedisStoreObject(lines[6], expiry));
-                    client.write(ByteBuffer.wrap("+OK\r\n".getBytes()));
-                } else if (command.equals("GET") && lines.length >= 5 && redisStore.containsKey(lines[4])) {
-                    long expiryTime = redisStore.get(lines[4]).expiration;
-                    String value;
-                    String getResponse;
-                    if(expiryTime < System.currentTimeMillis()){
-                        redisStore.remove(lines[4]);
-                        getResponse = "$-1\r\n";
-                    } else {
-                        value = redisStore.get(lines[4]).value;
-                        getResponse = "$" + value.length() + "\r\n" + value + "\r\n";
+
+                    case "ECHO" -> {
+                        if (lines.length >= 5) {
+                            String messageResponse = "$" + lines[4].length() + "\r\n" + lines[4] + "\r\n";
+                            System.out.println(
+                                    "Response to client " + client.getRemoteAddress() + ": " + messageResponse);
+                            client.write(ByteBuffer.wrap(messageResponse.getBytes()));
+                            handled = true;
+                        }
                     }
-                    client.write(ByteBuffer.wrap(getResponse.getBytes()));
-                    System.out.println("Response to client " + client.getRemoteAddress() + ": " + "GET: " + getResponse);
-                } else {
-                    String messageErrorResponse = "-ERR unknown command '" + command + "'\r\n";
-                    System.out.println("Response to client " + client.getRemoteAddress() + ": " + "Error Command: " + command);
+
+                    case "SET" -> {
+                        if (lines.length >= 7) {
+                            long expiry = Long.MAX_VALUE;
+                            if (lines.length >= 11 && lines[8].equalsIgnoreCase("PX")) {
+                                expiry = Long.parseLong(lines[10]) + System.currentTimeMillis();
+                            }
+                            System.out.println("Response to client " + client.getRemoteAddress() + ": "
+                                    + "SET: OK ; with expiry: " + expiry);
+                            redisStore.put(lines[4], new RedisStoreObject(lines[6], expiry));
+                            client.write(ByteBuffer.wrap("+OK\r\n".getBytes()));
+                            handled = true;
+                        }
+                    }
+
+                    case "GET" -> {
+                        if (lines.length >= 5 && redisStore.containsKey(lines[4])) {
+                            long expiryTime = redisStore.get(lines[4]).expiration;
+                            String value;
+                            String getResponse;
+                            if (expiryTime < System.currentTimeMillis()) {
+                                redisStore.remove(lines[4]);
+                                getResponse = "$-1\r\n";
+                            } else {
+                                value = redisStore.get(lines[4]).value;
+                                getResponse = "$" + value.length() + "\r\n" + value + "\r\n";
+                            }
+                            client.write(ByteBuffer.wrap(getResponse.getBytes()));
+                            System.out.println(
+                                    "Response to client " + client.getRemoteAddress() + ": " + "GET: " + getResponse);
+                            handled = true;
+                        }
+                    }
+                    case "CONFIG" -> {
+                        if (lines.length >= 7 && lines[4].equalsIgnoreCase("GET")) {
+                            String redisKey = lines[6];
+                            String value = rdbConfig.get(redisKey);
+                            if (value != null) {
+                                String resp = "*2\r\n$" + redisKey.length() + "\r\n" + redisKey + "\r\n$" + value.length()
+                                        + "\r\n" + value + "\r\n";
+                                client.write(ByteBuffer.wrap(resp.getBytes()));
+                            } else {
+                                String resp = "*2\r\n$" + redisKey.length() + "\r\n" + redisKey + "\r\n$-1\r\n";
+                                client.write(ByteBuffer.wrap(resp.getBytes()));
+                            }
+                            handled = true;
+                        }
+                    }
+                }
+
+                if (!handled) {
+                    String messageErrorResponse = "-ERR unknown or invalid command '" + command + "'\r\n";
+                    System.out.println(
+                            "Response to client " + client.getRemoteAddress() + ": " + "Error Command: " + command);
                     client.write(ByteBuffer.wrap(messageErrorResponse.getBytes()));
                 }
+
                 clientBuffers.get(client).setLength(0);
             }
+            // if (lines.length >= 3 && lines[0].startsWith("*")) {
+            // String command = lines[2].trim().toUpperCase();
+
+            // if (command.equals("PING")) {
+            // System.out.println("Response to client " + client.getRemoteAddress() + ": " +
+            // "PONG");
+            // client.write(ByteBuffer.wrap("+PONG\r\n".getBytes()));
+            // } else if (command.equals("ECHO") && lines.length >= 5) {
+            // String messageResponse = "$" + lines[4].length() + "\r\n" + lines[4] +
+            // "\r\n";
+            // System.out.println("Response to client " + client.getRemoteAddress() + ": " +
+            // messageResponse);
+            // client.write(ByteBuffer.wrap(messageResponse.getBytes()));
+            // } else if (command.equals("SET") && lines.length >= 7) {
+            // long expiry = Long.MAX_VALUE;
+            // if(lines.length >= 11 && lines[8].equalsIgnoreCase("PX")){
+            // expiry = Long.parseLong(lines[10]) + System.currentTimeMillis();
+            // }
+            // System.out.println("Response to client " + client.getRemoteAddress() + ": " +
+            // "SET: OK ; with expiry: " + expiry );
+            // redisStore.put(lines[4], new RedisStoreObject(lines[6], expiry));
+            // client.write(ByteBuffer.wrap("+OK\r\n".getBytes()));
+            // } else if (command.equals("GET") && lines.length >= 5 &&
+            // redisStore.containsKey(lines[4])) {
+            // long expiryTime = redisStore.get(lines[4]).expiration;
+            // String value;
+            // String getResponse;
+            // if(expiryTime < System.currentTimeMillis()){
+            // redisStore.remove(lines[4]);
+            // getResponse = "$-1\r\n";
+            // } else {
+            // value = redisStore.get(lines[4]).value;
+            // getResponse = "$" + value.length() + "\r\n" + value + "\r\n";
+            // }
+            // client.write(ByteBuffer.wrap(getResponse.getBytes()));
+            // System.out.println("Response to client " + client.getRemoteAddress() + ": " +
+            // "GET: " + getResponse);
+            // } else {
+            // String messageErrorResponse = "-ERR unknown command '" + command + "'\r\n";
+            // System.out.println("Response to client " + client.getRemoteAddress() + ": " +
+            // "Error Command: " + command);
+            // client.write(ByteBuffer.wrap(messageErrorResponse.getBytes()));
+            // }
+            // clientBuffers.get(client).setLength(0);
+            // }
         }
     }
 
