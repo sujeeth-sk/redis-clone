@@ -161,9 +161,11 @@ public class Main {
                                 String resp = "*2\r\n$" + redisKey.length() + "\r\n" + redisKey + "\r\n$" + value.length()
                                         + "\r\n" + value + "\r\n";
                                 client.write(ByteBuffer.wrap(resp.getBytes()));
+                                System.out.println(resp);
                             } else {
                                 String resp = "*2\r\n$" + redisKey.length() + "\r\n" + redisKey + "\r\n$-1\r\n";
                                 client.write(ByteBuffer.wrap(resp.getBytes()));
+                                System.out.println(resp);
                             }
                             handled = true;
                         }
