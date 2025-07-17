@@ -1,3 +1,5 @@
+package com.example.redisClone;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -8,22 +10,15 @@ import java.nio.channels.SocketChannel;
 import java.util.HashMap;
 import java.util.Set;
 
-class redisStoreObject{
-    String value;
-    long expiration;
-
-    public redisStoreObject(String value) {
-        this(value, Long.MAX_VALUE); 
-    }
-
-    public redisStoreObject(String value, long expiration) {
-        this.value = value;
-        this.expiration = expiration;
-    }
-}
 
 public class Main {
     public static void main(String[] args) throws IOException {
+
+        for (String arg : args) {
+            System.out.println(arg);
+        }
+        
+
         System.out.println("Logs from your program will appear here!");
         int port = 6379;
 
@@ -38,7 +33,7 @@ public class Main {
         ByteBuffer buffer = ByteBuffer.allocate(1024);
 
         HashMap<SocketChannel, StringBuilder> clientBuffers = new HashMap<>();
-        HashMap<String, redisStoreObject> redisStore = new HashMap<>();
+        HashMap<String, RedisStoreObject> redisStore = new HashMap<>();
 
         // event loop
         while (true) {
@@ -71,7 +66,7 @@ public class Main {
         }
     }
 
-    public static void handleReadableKeys(ByteBuffer buffer, HashMap<SocketChannel, StringBuilder> clientBuffers, SelectionKey key, HashMap<String, redisStoreObject> redisStore) throws IOException {
+    public static void handleReadableKeys(ByteBuffer buffer, HashMap<SocketChannel, StringBuilder> clientBuffers, SelectionKey key, HashMap<String, RedisStoreObject> redisStore) throws IOException {
         SocketChannel client = (SocketChannel) key.channel();
         buffer.clear(); // reset buffer for new read
 
@@ -111,7 +106,7 @@ public class Main {
                         expiry = Long.parseLong(lines[10]) + System.currentTimeMillis();
                     }
                     System.out.println("Response to client " + client.getRemoteAddress() + ": " + "SET: OK ; with expiry: " + expiry );
-                    redisStore.put(lines[4], new redisStoreObject(lines[6], expiry));
+                    redisStore.put(lines[4], new RedisStoreObject(lines[6], expiry));
                     client.write(ByteBuffer.wrap("+OK\r\n".getBytes()));
                 } else if (command.equals("GET") && lines.length >= 5 && redisStore.containsKey(lines[4])) {
                     long expiryTime = redisStore.get(lines[4]).expiration;
@@ -120,7 +115,6 @@ public class Main {
                     if(expiryTime < System.currentTimeMillis()){
                         redisStore.remove(lines[4]);
                         getResponse = "$-1\r\n";
-                        //in this palce
                     } else {
                         value = redisStore.get(lines[4]).value;
                         getResponse = "$" + value.length() + "\r\n" + value + "\r\n";
