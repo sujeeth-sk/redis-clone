@@ -42,11 +42,7 @@ public class Main {
 
         HashMap<SocketChannel, StringBuilder> clientBuffers = new HashMap<>();
         HashMap<String, RedisStoreObject> redisStore = RDBconfigHandler.loadRDB(rdbConfig);
-<<<<<<< HEAD
         if (redisStore == null) {
-=======
-        if(redisStore == null){
->>>>>>> 741cd84 (rdb support)
             redisStore = new HashMap<>();
         }
 
@@ -184,7 +180,6 @@ public class Main {
                         }
                     }
                     case "KEYS" -> {
-<<<<<<< HEAD
                         if (lines.length >= 5 && lines[4].equals("*")) {
                             Set<String> keys = redisStore.keySet();
                             StringBuilder responseBuilder = new StringBuilder();
@@ -200,27 +195,6 @@ public class Main {
                             System.out.println("KEYS response: " + responseBuilder.toString().replace("\r\n", "\\r\\n"));
                             handled = true;
                         }
-=======
-                        if(lines.length >= 5 && lines[4].equals("\"*\"")){
-                            if(redisStore.isEmpty()){
-                                HashMap<String, RedisStoreObject> loaded = RDBconfigHandler.loadRDB(rdbConfig);
-                                if(loaded != null){
-                                    redisStore.putAll(loaded);
-                                }
-                            }
-                        }
-                        Set<String> keys = redisStore.keySet();
-                        StringBuilder responseBuilder = new StringBuilder();
-                        responseBuilder.append("*").append(keys.size()).append("\r\n");
-
-                        for(String k : keys){
-                            responseBuilder.append("$").append(k.length()).append("\r\n");
-                            responseBuilder.append(k).append("\r\n");
-                        }
-                        client.write(ByteBuffer.wrap(responseBuilder.toString().getBytes()));
-                        System.out.println("KEYS reponse: " + responseBuilder);
-                        handled = true;
->>>>>>> 741cd84 (rdb support)
                     }
                 }
 
