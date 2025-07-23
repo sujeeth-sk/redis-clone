@@ -16,7 +16,7 @@ import com.example.redisClone.rdb.RDBconfigHandler;
 public class Main {
     public static void main(String[] args) throws IOException {
 
-        String directory = "/tmp";  
+        String directory = "/tmp";
         String dataBaseFileName = "Tdump.rdb";
         for (int i = 0; i < args.length - 1; i++) {
             if (args[i].equals("--dir")) {
