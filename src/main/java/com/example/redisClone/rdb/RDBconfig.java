@@ -10,7 +10,7 @@ public class RDBconfig {
     }
 
     public String get(String redisKey){
-        if(redisKey.equalsIgnoreCase("dir")) return directory;
+        if(redisKey.equalsIgnoreCase("directory")) return directory;
         if(redisKey.equalsIgnoreCase("dataBaseFileName")) return dataBaseFileName;
         return null;
     }
