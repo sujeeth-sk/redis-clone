@@ -16,7 +16,7 @@ import com.example.redisClone.rdb.RDBconfigHandler;
 public class Main {
     public static void main(String[] args) throws IOException {
 
-        String directory = "/tmp";  
+        String directory = "/tmp";
         String dataBaseFileName = "Tdump.rdb";
         for (int i = 0; i < args.length - 1; i++) {
             if (args[i].equals("--dir")) {
@@ -42,7 +42,7 @@ public class Main {
 
         HashMap<SocketChannel, StringBuilder> clientBuffers = new HashMap<>();
         HashMap<String, RedisStoreObject> redisStore = RDBconfigHandler.loadRDB(rdbConfig);
-        if(redisStore == null){
+        if (redisStore == null) {
             redisStore = new HashMap<>();
         }
 
@@ -162,7 +162,8 @@ public class Main {
                             String redisKey = lines[6];
                             String value = rdbConfig.get(redisKey);
                             if (value != null) {
-                                String resp = "*2\r\n$" + redisKey.length() + "\r\n" + redisKey + "\r\n$" + value.length()
+                                String resp = "*2\r\n$" + redisKey.length() + "\r\n" + redisKey + "\r\n$"
+                                        + value.length()
                                         + "\r\n" + value + "\r\n";
                                 client.write(ByteBuffer.wrap(resp.getBytes()));
                                 System.out.println(resp);
@@ -175,25 +176,21 @@ public class Main {
                         }
                     }
                     case "KEYS" -> {
-                        if(lines.length >= 5 && lines[4].equals("\"*\"")){
-                            if(redisStore.isEmpty()){
-                                HashMap<String, RedisStoreObject> loaded = RDBconfigHandler.loadRDB(rdbConfig);
-                                if(loaded != null){
-                                    redisStore.putAll(loaded);
-                                }
-                            }
-                        }
-                        Set<String> keys = redisStore.keySet();
-                        StringBuilder responseBuilder = new StringBuilder();
-                        responseBuilder.append("*").append(keys.size()).append("\r\n");
+                        if (lines.length >= 5 && lines[4].equals("*")) {
+                            Set<String> keys = redisStore.keySet();
+                            StringBuilder responseBuilder = new StringBuilder();
 
-                        for(String k : keys){
-                            responseBuilder.append("$").append(k.length()).append("\r\n");
-                            responseBuilder.append(k).append("\r\n");
+                            responseBuilder.append("*").append(keys.size()).append("\r\n");
+
+                            for (String k : keys) {
+                                responseBuilder.append("$").append(k.length()).append("\r\n");
+                                responseBuilder.append(k).append("\r\n");
+                            }
+
+                            client.write(ByteBuffer.wrap(responseBuilder.toString().getBytes()));
+                            System.out.println("KEYS response: " + responseBuilder.toString().replace("\r\n", "\\r\\n"));
+                            handled = true;
                         }
-                        client.write(ByteBuffer.wrap(responseBuilder.toString().getBytes()));
-                        System.out.println("KEYS reponse: " + responseBuilder);
-                        handled = true;
                     }
                 }
 
