@@ -14,11 +14,11 @@ public class RDBconfigHandler{
         String directory = rdbConfig.get("directory");
         String dataBaseFileName = rdbConfig.get("dataBaseFileName");
 
+        File rdbFile = new File(directory, dataBaseFileName);
         if(directory == null || dataBaseFileName == null){
             System.out.println("Missing --dir or --dbFilename arguments");
             return new HashMap<>();
         }
-        File rdbFile = new File(directory, dataBaseFileName);
         
         if(!rdbFile.exists()){
             System.out.println("Loading RDB from: " + rdbFile.getAbsolutePath());
