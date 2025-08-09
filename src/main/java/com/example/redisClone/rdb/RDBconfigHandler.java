@@ -48,11 +48,11 @@ public class RDBconfigHandler {
 
                 if (opcode == 0xFC) { // Expiry in milliseconds
                     expiryMs = dis.readLong();
-                    opcode = dis.read(); // Read the actual value type opcode that follows
+                    continue; // Read the actual value type opcode that follows
                 } else if (opcode == 0xFD) { // Expiry in seconds
                     // Read 4-byte unsigned-int for seconds and convert to milliseconds
                     expiryMs = dis.readInt() * 1000L;
-                    opcode = dis.read(); // Read the actual value type opcode that follows
+                    continue; // Read the actual value type opcode that follows
                 }
 
                 if (opcode == 0xFE) { // database selector
