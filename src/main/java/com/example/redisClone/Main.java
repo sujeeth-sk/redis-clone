@@ -140,20 +140,24 @@ public class Main {
                     }
 
                     case "GET" -> {
-                        if (lines.length >= 5 && redisStore.containsKey(lines[4])) {
-                            long expiryTime = redisStore.get(lines[4]).expiration;
-                            String value;
-                            String getResponse;
-                            if (expiryTime < System.currentTimeMillis()) {
-                                redisStore.remove(lines[4]);
+                        String keyToGet = lines[4];
+                        RedisStoreObject storedObject = redisStore.get(keyToGet);
+                        String getResponse;
+
+                        if(storedObject == null){ // if there is no key or key does not exist
+                            getResponse = "$-1\r\n";
+                        } else {
+                            long expiryTime = storedObject.expiration;
+
+                            if(expiryTime != Long.MAX_VALUE && expiryTime < System.currentTimeMillis()){
+                                //key expired
+                                redisStore.remove(keyToGet);
                                 getResponse = "$-1\r\n";
                             } else {
-                                value = redisStore.get(lines[4]).value;
+                                String value = storedObject.value;
                                 getResponse = "$" + value.length() + "\r\n" + value + "\r\n";
                             }
                             client.write(ByteBuffer.wrap(getResponse.getBytes()));
-                            System.out.println(
-                                    "Response to client " + client.getRemoteAddress() + ": " + "GET: " + getResponse);
                             handled = true;
                         }
                     }

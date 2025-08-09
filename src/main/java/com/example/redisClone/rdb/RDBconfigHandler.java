@@ -8,71 +8,86 @@ import java.util.HashMap;
 
 import com.example.redisClone.RedisStoreObject;
 
-
-public class RDBconfigHandler{
-    public static HashMap<String, RedisStoreObject> loadRDB(RDBconfig rdbConfig){
+public class RDBconfigHandler {
+    public static HashMap<String, RedisStoreObject> loadRDB(RDBconfig rdbConfig) {
         String directory = rdbConfig.get("directory");
         String dataBaseFileName = rdbConfig.get("dataBaseFileName");
 
         File rdbFile = new File(directory, dataBaseFileName);
-        if(directory == null || dataBaseFileName == null){
+        if (directory == null || dataBaseFileName == null) {
             System.out.println("Missing --dir or --dbFilename arguments");
             return new HashMap<>();
         }
-        
-        if(!rdbFile.exists()){
+
+        if (!rdbFile.exists()) {
             System.out.println("Loading RDB from: " + rdbFile.getAbsolutePath());
             return new HashMap<>();
         }
-        
+
         System.out.println("Loading RDB from: " + rdbFile.getAbsolutePath());
         HashMap<String, RedisStoreObject> store = new HashMap<>();
 
-        try(FileInputStream fis = new FileInputStream(rdbFile) ; DataInputStream dis = new DataInputStream(fis)){
-            byte [] magic = new byte[5];
+        try (FileInputStream fis = new FileInputStream(rdbFile); DataInputStream dis = new DataInputStream(fis)) {
+            byte[] magic = new byte[5];
             dis.readFully(magic);
 
-            if(!"REDIS".equals(new String(magic))){
+            if (!"REDIS".equals(new String(magic))) {
                 throw new IOException("Invalid RDB file: Magic string does not match 'REDIS'");
             }
             dis.skipBytes(4);
 
-            //parse opcode and data until EOF
+            // parse opcode and data until EOF
+
+            long expiryMs = -1; // Variable to hold expiry time in milliseconds
 
             int opcode;
-            while((opcode = dis.read()) != -1){
-                if(opcode == 0xFF){ //end of file
+            while ((opcode = dis.read()) != -1) {
+                if (opcode == 0xFF) { // end of file
                     break;
                 }
 
-                if(opcode == 0xFE){ //database selector
+                if (opcode == 0xFC) { // Expiry in milliseconds
+                    expiryMs = dis.readLong();
+                    opcode = dis.read(); // Read the actual value type opcode that follows
+                } else if (opcode == 0xFD) { // Expiry in seconds
+                    // Read 4-byte unsigned-int for seconds and convert to milliseconds
+                    expiryMs = dis.readInt() * 1000L;
+                    opcode = dis.read(); // Read the actual value type opcode that follows
+                }
+
+                if (opcode == 0xFE) { // database selector
                     readLength(dis);
                     continue;
                 }
 
-                if(opcode == 0xFB){ // resizedb
-                    readLength(dis); //hash table size 
-                    readLength(dis); //expore hash table size
+                if (opcode == 0xFB) { // resizedb
+                    readLength(dis); // hash table size
+                    readLength(dis); // expore hash table size
                     continue;
                 }
 
-                if(opcode == 0xFA){ // aux field
-                    readString(dis); //key
-                    readString(dis); //value
-                    continue;    
+                if (opcode == 0xFA) { // aux field
+                    readString(dis); // key
+                    readString(dis); // value
+                    continue;
                 }
 
-                if(opcode == 0){
+                if (opcode == 0) {
                     String key = readString(dis);
                     String value = readString(dis);
-                    store.put(key, new RedisStoreObject(value));
+                    if(expiryMs != -1){ // if there is an expiry value
+                        store.put(key, new RedisStoreObject(value, expiryMs));
+                        expiryMs = -1; // reset for the next entry 
+                    } else { // store without any specific key
+                        store.put(key, new RedisStoreObject(value));
+                    }
                 }
 
             }
             System.out.println("loaded " + store.size() + " keys form rdb");
             return store;
 
-        } catch(IOException e){
+        } catch (IOException e) {
             System.out.println("error lading RDB file: " + e.getMessage());
             e.printStackTrace();
             return new HashMap<>();
@@ -81,15 +96,16 @@ public class RDBconfigHandler{
 
     private static String readString(DataInputStream dis) throws IOException {
         int length = readLength(dis);
-        if(length == 0) return "";
-        byte [] bytes = new byte[length];
+        if (length == 0)
+            return "";
+        byte[] bytes = new byte[length];
         dis.readFully(bytes);
         return new String(bytes);
     }
 
     private static int readLength(DataInputStream dis) throws IOException {
         int firstByte = dis.read();
-        if(firstByte == -1){
+        if (firstByte == -1) {
             throw new IOException("unexpected end of stream while reading length");
         }
         int type = (firstByte & 0xC0) >> 6;

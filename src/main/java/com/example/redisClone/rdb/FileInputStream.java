@@ -1,5 +1,5 @@
 package com.example.redisClone.rdb;
 
-public class FileINputStream {
+public class FileInputStream {
 
 }
