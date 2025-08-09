@@ -47,11 +47,11 @@ public class RDBconfigHandler {
                 }
 
                 if (opcode == 0xFC) { // Expiry in milliseconds
-                    expiryMs = dis.readLong();
+                    expiryMs = readLittleEndianLong(dis);
                     continue; // Read the actual value type opcode that follows
                 } else if (opcode == 0xFD) { // Expiry in seconds
                     // Read 4-byte unsigned-int for seconds and convert to milliseconds
-                    expiryMs = dis.readInt() * 1000L;
+                    expiryMs = readLittleEndianLong(dis) * 1000L;
                     continue; // Read the actual value type opcode that follows
                 }
 
@@ -138,5 +138,21 @@ public class RDBconfigHandler {
             }
             default -> throw new IOException("Unknown length encoding type");
         }
+    }
+
+    private static long readLittleEndianLong(DataInputStream dis) throws IOException{
+        long value = 0;
+        for(int i=0; i<8; i++){
+            value |= ((long) dis.read()) << (i*8);
+        }
+        return value;
+    }
+
+    private static int readLittleEndianInt(DataInputStream dis) throws IOException{
+        int value = 0;
+        for(int i=0; i<4; i++){
+            value |= dis.read() << (i*8);
+        }
+        return value;
     }
 }
