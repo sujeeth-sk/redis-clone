@@ -30,18 +30,20 @@ public class Main {
         String directory = "/tmp";
         String dataBaseFileName = "Tdump.rdb";
         // Loop through command-line arguments to find --dir and --dbfilename.
+        int port = 6379; // Standard Redis port.
         for (int i = 0; i < args.length - 1; i++) {
             if (args[i].equals("--dir")) {
                 directory = args[i + 1];
             } else if (args[i].equals("--dbfilename")) {
                 dataBaseFileName = args[i + 1];
+            } else if(args[i].equals("--port")){
+                port = Integer.parseInt(args[i+1]);
             }
         }
         // Create a configuration object to hold these values.
         RDBconfig rdbConfig = new RDBconfig(directory, dataBaseFileName);
 
         System.out.println("Logs from your program will appear here!");
-        int port = 6379; // Standard Redis port.
 
         // --- Non-Blocking Server Setup ---
         // Selector allows us to manage multiple channels (connections) with a single thread.
