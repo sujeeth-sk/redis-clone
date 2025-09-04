@@ -1,7 +1,10 @@
 package com.example.redisClone;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
@@ -15,17 +18,19 @@ import com.example.redisClone.rdb.RDBconfigHandler;
 
 /**
  * The main entry point for the Redis Clone server.
- * It uses Java NIO (Non-blocking I/O) to handle multiple client connections concurrently.
+ * It uses Java NIO (Non-blocking I/O) to handle multiple client connections
+ * concurrently.
  */
 public class Main {
     /**
      * Main method to start the server.
+     * 
      * @param args Command-line arguments, specifically --dir and --dbfilename.
      * @throws IOException If an I/O error occurs.
      */
     public static void main(String[] args) throws IOException {
 
-        //variables to store the replication info
+        // variables to store the replication info
         String role = "master";
         String masterHost = "";
         String masterPort = "";
@@ -43,15 +48,60 @@ public class Main {
                 directory = args[i + 1];
             } else if (args[i].equals("--dbfilename")) {
                 dataBaseFileName = args[i + 1];
-            } else if(args[i].equals("--port")){
-                port = Integer.parseInt(args[i+1]);
-            } else if(args[i].equals("--replicaof")){
-                //for agrument like "localhost 6379"
-                String [] replicaOfArgs = args[i+1].split(" ");
+            } else if (args[i].equals("--port")) {
+                port = Integer.parseInt(args[i + 1]);
+            } else if (args[i].equals("--replicaof")) {
+                // for agrument like "localhost 6379"
+                String[] replicaOfArgs = args[i + 1].split(" ");
                 masterHost = replicaOfArgs[0];
-                masterPort = replicaOfArgs[1];  
-                role = "slave"; //is this flag is present, then the role is slave
+                masterPort = replicaOfArgs[1];
+                role = "slave"; // is this flag is present, then the role is slave
             }
+        }
+        if (role.equals("slave")) {
+            final String finalMasterHost = masterHost;
+            final String finalMasterPort = masterPort;
+            final int finalPort = port;
+            new Thread(() -> {
+                try {
+                    // create socket to connect to master server
+                    Socket masterSocket = new Socket(finalMasterHost, Integer.parseInt(finalMasterPort));
+                    OutputStream outputStream = masterSocket.getOutputStream();
+                    InputStream inputStream = masterSocket.getInputStream();
+                    byte[] buffer = new byte[1024];
+                    // command is a RESP Array *\1\r\n$4\r\nPING\r\n
+                    // handshake part 1 PING
+                    String pingCommand = "*1\r\n$4\r\nPING\r\n";
+                    outputStream.write(pingCommand.getBytes());
+                    // wait for and read the +PONG
+                    inputStream.read(buffer);
+
+                    // handshake part 2 REPLCONF port
+                    String replconfPortCmd = "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n" + finalPort + "\r\n";
+                    outputStream.write(replconfPortCmd.getBytes());
+                    // wait for and read the +OK response
+                    inputStream.read(buffer);
+
+                    // handshake part 3 REPLCONF capa
+                    // the replica sends its capaibilities
+                    String replconfCapaCmd = "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n";
+                    outputStream.write(replconfCapaCmd.getBytes());
+                    // wait for and read the +OK response
+                    inputStream.read(buffer);
+
+                    //handshake part 4 psync
+                    //replica now asks from the master's data
+                    String psyncCmd = "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n";
+                    outputStream.write(psyncCmd.getBytes());
+                    inputStream.read(buffer);
+
+                    System.out.println("Successfully completed handshake with master");
+
+                    masterSocket.close();
+                } catch (IOException e) {
+                    System.out.println("Failed to connect to master: " + e.getMessage());
+                }
+            }).start();
         }
         // Create a configuration object to hold these values.
         RDBconfig rdbConfig = new RDBconfig(directory, dataBaseFileName);
@@ -59,7 +109,8 @@ public class Main {
         System.out.println("Logs from your program will appear here!");
 
         // --- Non-Blocking Server Setup ---
-        // Selector allows us to manage multiple channels (connections) with a single thread.
+        // Selector allows us to manage multiple channels (connections) with a single
+        // thread.
         Selector selector = Selector.open();
 
         // Create a non-blocking server socket channel.
@@ -95,7 +146,8 @@ public class Main {
                 }
                 // Check if an existing client has sent data.
                 else if (key.isReadable()) {
-                    handleReadableKeys(buffer, clientBuffers, key, redisStore, rdbConfig, role, master_replid, master_repl_offest);
+                    handleReadableKeys(buffer, clientBuffers, key, redisStore, rdbConfig, role, master_replid,
+                            master_repl_offest);
                 }
             }
         }
@@ -103,9 +155,10 @@ public class Main {
 
     /**
      * Handles new client connections.
+     * 
      * @param clientBuffers Map to store client-specific data buffers.
-     * @param key The selection key representing the server socket.
-     * @param selector The main selector.
+     * @param key           The selection key representing the server socket.
+     * @param selector      The main selector.
      * @throws IOException If an I/O error occurs.
      */
     public static void handleAcceptableKeys(HashMap<SocketChannel, StringBuilder> clientBuffers, SelectionKey key,
@@ -120,17 +173,19 @@ public class Main {
         }
     }
 
-/**
+    /**
      * Handles reading data from a client and processing any complete commands.
-     * @param buffer A shared buffer for reading data from the socket.
+     * 
+     * @param buffer        A shared buffer for reading data from the socket.
      * @param clientBuffers Map of client-specific command buffers.
-     * @param key The selection key for the readable client channel.
-     * @param redisStore The main in-memory data store.
-     * @param rdbConfig The server's RDB configuration.
+     * @param key           The selection key for the readable client channel.
+     * @param redisStore    The main in-memory data store.
+     * @param rdbConfig     The server's RDB configuration.
      * @throws IOException If an I/O error occurs.
      */
     public static void handleReadableKeys(ByteBuffer buffer, HashMap<SocketChannel, StringBuilder> clientBuffers,
-            SelectionKey key, HashMap<String, RedisStoreObject> redisStore, RDBconfig rdbConfig, String role, String master_replid, String master_repl_offset) throws IOException {
+            SelectionKey key, HashMap<String, RedisStoreObject> redisStore, RDBconfig rdbConfig, String role,
+            String master_replid, String master_repl_offset) throws IOException {
         SocketChannel client = (SocketChannel) key.channel();
         buffer.clear(); // Prepare the buffer for a new read.
 
@@ -247,12 +302,12 @@ public class Main {
 
                     case "INFO" -> {
                         if (lines.length >= 5 && lines[4].equalsIgnoreCase("replication")) {
-                            //build reponse line by line 
+                            // build reponse line by line
                             StringBuilder infoBuilder = new StringBuilder();
                             infoBuilder.append("role:").append(role);
 
-                            //only add master specificinfo if the role is master
-                            if(role.equals("master")){
+                            // only add master specificinfo if the role is master
+                            if (role.equals("master")) {
                                 infoBuilder.append("\n");
                                 infoBuilder.append("master_replid:").append(master_replid);
                                 infoBuilder.append("\n");
@@ -260,7 +315,7 @@ public class Main {
                             }
                             String infoContent = infoBuilder.toString();
 
-                            //format the 
+                            // format the
                             responseToSend = "$" + infoContent.length() + "\r\n" + infoContent + "\r\n";
                             handled = true;
                         }
