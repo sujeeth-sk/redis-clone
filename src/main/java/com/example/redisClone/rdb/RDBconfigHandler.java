@@ -8,19 +8,27 @@ import java.util.HashMap;
 
 import com.example.redisClone.RedisStoreObject;
 
+/**
+ * Handles the parsing of Redis RDB files to load data into memory on startup.
+ */
 public class RDBconfigHandler {
+    /**
+     * Loads key-value pairs from an RDB file specified by the configuration.
+     * @param rdbConfig The configuration object containing the directory and filename.
+     * @return A HashMap representing the in-memory store.
+     */
     public static HashMap<String, RedisStoreObject> loadRDB(RDBconfig rdbConfig) {
         String directory = rdbConfig.get("directory");
-        String dataBaseFileName = rdbConfig.get("dataBaseFileName");
+        String dataBaseFileName = rdbConfig.get("dbfilename");
 
+        // --- File Handling ---
         File rdbFile = new File(directory, dataBaseFileName);
         if (directory == null || dataBaseFileName == null) {
-            System.out.println("Missing --dir or --dbFilename arguments");
+            System.out.println("Missing --dir or --dbfilename arguments");
             return new HashMap<>();
         }
-
         if (!rdbFile.exists()) {
-            System.out.println("Loading RDB from: " + rdbFile.getAbsolutePath());
+            System.out.println("RDB file not found, starting with empty DB.");
             return new HashMap<>();
         }
 
@@ -28,130 +36,127 @@ public class RDBconfigHandler {
         HashMap<String, RedisStoreObject> store = new HashMap<>();
 
         try (FileInputStream fis = new FileInputStream(rdbFile); DataInputStream dis = new DataInputStream(fis)) {
+            // --- RDB Header Parsing ---
+            // Verify the "REDIS" magic string.
             byte[] magic = new byte[5];
             dis.readFully(magic);
-
             if (!"REDIS".equals(new String(magic))) {
-                throw new IOException("Invalid RDB file: Magic string does not match 'REDIS'");
+                throw new IOException("Invalid RDB file format");
             }
+            // Skip the 4-byte RDB version number.
             dis.skipBytes(4);
 
-            // parse opcode and data until EOF
-
-            long expiryMs = -1; // Variable to hold expiry time in milliseconds
-
+            // --- Main Parsing Loop ---
+            long expiryMs = -1; // Temporary variable to hold expiry for the next key.
             int opcode;
+
+            // Read the file byte by byte, interpreting each as an opcode or data.
             while ((opcode = dis.read()) != -1) {
-                if (opcode == 0xFF) { // end of file
+                // An expiry opcode can come BEFORE another opcode.
+                if (opcode == 0xFF) { // End Of File marker
                     break;
                 }
 
-                if (opcode == 0xFC) { // Expiry in milliseconds
+                // Check for expiry opcodes first.
+                if (opcode == 0xFC) { // Expiry in milliseconds (little-endian)
                     expiryMs = readLittleEndianLong(dis);
-                    continue; // Read the actual value type opcode that follows
-                } else if (opcode == 0xFD) { // Expiry in seconds
-                    // Read 4-byte unsigned-int for seconds and convert to milliseconds
-                    expiryMs = readLittleEndianLong(dis) * 1000L;
-                    continue; // Read the actual value type opcode that follows
+                    continue; // Loop again to read the value-type opcode that follows.
+                } else if (opcode == 0xFD) { // Expiry in seconds (little-endian)
+                    expiryMs = readLittleEndianInt(dis) * 1000L;
+                    continue; // Loop again to read the next opcode.
                 }
 
-                if (opcode == 0xFE) { // database selector
+                // Handle metadata opcodes.
+                if (opcode == 0xFE) { // DB selector
                     readLength(dis);
                     continue;
                 }
-
-                if (opcode == 0xFB) { // resizedb
-                    readLength(dis); // hash table size
-                    readLength(dis); // expore hash table size
+                if (opcode == 0xFB) { // RESIZEDB hint
+                    readLength(dis);
+                    readLength(dis);
                     continue;
                 }
-
-                if (opcode == 0xFA) { // aux field
-                    readString(dis); // key
-                    readString(dis); // value
+                if (opcode == 0xFA) { // AUX auxiliary field
+                    readString(dis); // Read and discard key
+                    readString(dis); // Read and discard value
                     continue;
                 }
-
+                
+                // Handle actual key-value data (opcode 0 means string encoding).
                 if (opcode == 0) {
                     String key = readString(dis);
                     String value = readString(dis);
-                    if(expiryMs != -1){ // if there is an expiry value
+
+                    if (expiryMs != -1) {
+                        // If we found an expiry, store the key with it.
                         store.put(key, new RedisStoreObject(value, expiryMs));
-                        expiryMs = -1; // reset for the next entry 
-                    } else { // store without any specific key
+                        expiryMs = -1; // IMPORTANT: Reset for the next key.
+                    } else {
                         store.put(key, new RedisStoreObject(value));
                     }
                 }
-
             }
-            System.out.println("loaded " + store.size() + " keys form rdb");
+            System.out.println("Loaded " + store.size() + " keys from RDB");
             return store;
 
         } catch (IOException e) {
-            System.out.println("error lading RDB file: " + e.getMessage());
-            e.printStackTrace();
+            System.out.println("Error loading RDB file: " + e.getMessage());
             return new HashMap<>();
         }
     }
 
+    /**
+     * Reads a Redis length-prefixed string from the stream.
+     */
     private static String readString(DataInputStream dis) throws IOException {
         int length = readLength(dis);
-        if (length == 0)
-            return "";
+        if (length == 0) return "";
         byte[] bytes = new byte[length];
         dis.readFully(bytes);
         return new String(bytes);
     }
 
+    /**
+     * Reads a Redis variable-length encoded integer.
+     */
     private static int readLength(DataInputStream dis) throws IOException {
         int firstByte = dis.read();
-        if (firstByte == -1) {
-            throw new IOException("unexpected end of stream while reading length");
-        }
+        if (firstByte == -1) throw new IOException("Unexpected end of stream");
         int type = (firstByte & 0xC0) >> 6;
         switch (type) {
-            case 0b00 -> {
-                // The next 6 bits represent the length
-                return firstByte & 0x3F;
-            }
-            case 0b01 -> {
-                // The next 14 bits represent the length
-                int secondByte = dis.read();
-                return ((firstByte & 0x3F) << 8) | secondByte;
-            }
-            case 0b10 -> {
-                // The next 4 bytes are a 32-bit integer length
-                return dis.readInt();
-            }
-            case 0b11 -> {
-                // Special format, not a length
+            case 0b00: return firstByte & 0x3F; // 6-bit length
+            case 0b01: return ((firstByte & 0x3F) << 8) | dis.read(); // 14-bit length
+            case 0b10: return dis.readInt(); // 32-bit length
+            case 0b11: // Special encoded object, not a string length.
                 int encoding = firstByte & 0x3F;
-                // For this stage, we only need to skip these values.
-                // 0, 1, 2 represent integers of 1, 2, or 4 bytes.
-                if (encoding == 0 || encoding == 1 || encoding == 2) {
-                    dis.skipBytes(1 << encoding); // Skip 1, 2, or 4 bytes
-                    return 0; // Return 0 as this was not a string length
+                if (encoding <= 2) { // Integer encodings of 1, 2, or 4 bytes.
+                    dis.skipBytes(1 << encoding);
+                    return 0; // Return 0 because this wasn't a string to read.
                 }
-                // For other special types (like compressed strings), we would need more logic,
-                // but this is enough to pass the current stage.
                 throw new IOException("Unhandled special encoding type: " + encoding);
-            }
-            default -> throw new IOException("Unknown length encoding type");
+            default: throw new IOException("Unknown length encoding type");
         }
     }
 
-    private static long readLittleEndianLong(DataInputStream dis) throws IOException{
+    /**
+     * Reads an 8-byte little-endian long from the stream.
+     * Required because RDB timestamps are little-endian, but Java's readLong is big-endian.
+     */
+    private static long readLittleEndianLong(DataInputStream dis) throws IOException {
         long value = 0;
-        for(int i=0; i<8; i++){
-            value |= ((long) dis.read()) << (i*8);
+        for (int i = 0; i < 8; i++) {
+            value |= ((long) dis.read()) << (i * 8);
         }
         return value;
     }
 
-    private static int readLittleEndianInt(DataInputStream dis) throws IOException{
+    /**
+     * Reads a 4-byte little-endian integer from the stream.
+     */
+    private static int readLittleEndianInt(DataInputStream dis) throws IOException {
         int value = 0;
-        for(int i=0; i<4; i++){
-            value |= dis.read() << (i*8);
+        for (int i = 0; i < 4; i++) {
+            value |= dis.read() << (i * 8);
         }
         return value;
     }
